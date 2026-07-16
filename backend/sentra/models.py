@@ -485,6 +485,14 @@ class ExplanationResult(SentraModel):
 
 
 class DashboardObject(SentraModel):
+    """subsystem_results/triggered_rules/baseline_deviation/baseline_profile
+    are an extension beyond Doc 02 §27's literal field list (Doc 02 §30:
+    "developers SHALL extend existing models"), added so the UI's
+    explainability drill-down (Doc 16 §43: "touching any explanation SHALL
+    reveal evidence, calculation, subsystem, clinical rule, weight,
+    confidence") has the full pipeline detail to show, not just the
+    condensed primary/secondary reason text in `explanation`."""
+
     patient_id: str
     patient_state: PatientState
     priority: float = Field(ge=0, le=100)
@@ -493,6 +501,16 @@ class DashboardObject(SentraModel):
     explanation: Optional[ExplanationResult] = None
     sensor_status: list[SensorStatus] = Field(default_factory=list)
     alerts: list[str] = Field(default_factory=list)
+    subsystem_results: list[SubsystemResult] = Field(default_factory=list)
+    triggered_rules: list[ClinicalRuleResult] = Field(default_factory=list)
+    baseline_deviation: Optional[BaselineDeviation] = None
+    baseline_profile: Optional[BaselineProfile] = None
+    current_readings: dict[str, float] = Field(
+        default_factory=dict,
+        description="Flat snapshot of key current vitals (heart_rate, hrv, spo2, "
+        "temperature, motion_intensity) so the UI can show Doc 16 §33's "
+        "baseline-vs-current comparison without re-deriving it from deviation z-scores.",
+    )
 
 
 # ---------------------------------------------------------------------------

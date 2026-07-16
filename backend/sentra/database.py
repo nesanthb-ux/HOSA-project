@@ -45,12 +45,18 @@ def init_db() -> None:
             confidence REAL,
             trend TEXT,
             explanation_json TEXT,
-            alerts_json TEXT
+            alerts_json TEXT,
+            detail_json TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_snapshots_patient_ts ON dashboard_snapshots(patient_id, ts);
         """
     )
+    # detail_json is newer than the original schema — add it for anyone
+    # with an existing sentra.db from before Doc 16 §43's drill-down.
+    existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(dashboard_snapshots)")}
+    if "detail_json" not in existing_columns:
+        conn.execute("ALTER TABLE dashboard_snapshots ADD COLUMN detail_json TEXT")
     conn.commit()
 
 
@@ -87,10 +93,26 @@ def record_snapshot(dashboard_object: DashboardObject) -> None:
            VALUES (?, ?) ON CONFLICT(patient_id) DO NOTHING""",
         (dashboard_object.patient_id, dashboard_object.patient_id),
     )
+    # Doc 16 §43 explainability drill-down detail — subsystem scores,
+    # triggered rules, and baseline comparison, not just the condensed
+    # explanation text. See models.py::DashboardObject's docstring.
+    detail = {
+        "subsystem_results": [s.model_dump(mode="json") for s in dashboard_object.subsystem_results],
+        "triggered_rules": [r.model_dump(mode="json") for r in dashboard_object.triggered_rules],
+        "baseline_deviation": (
+            dashboard_object.baseline_deviation.model_dump(mode="json")
+            if dashboard_object.baseline_deviation else None
+        ),
+        "baseline_profile": (
+            dashboard_object.baseline_profile.model_dump(mode="json")
+            if dashboard_object.baseline_profile else None
+        ),
+        "current_readings": dashboard_object.current_readings,
+    }
     conn.execute(
         """INSERT INTO dashboard_snapshots
-           (patient_id, ts, state, priority, confidence, trend, explanation_json, alerts_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+           (patient_id, ts, state, priority, confidence, trend, explanation_json, alerts_json, detail_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             dashboard_object.patient_id,
             dashboard_object.timestamp.timestamp(),
@@ -100,6 +122,7 @@ def record_snapshot(dashboard_object: DashboardObject) -> None:
             dashboard_object.trend,
             dashboard_object.explanation.model_dump_json() if dashboard_object.explanation else None,
             json.dumps(dashboard_object.alerts),
+            json.dumps(detail),
         ),
     )
     conn.commit()
@@ -118,6 +141,7 @@ def get_latest_snapshots() -> list[dict]:
         d = dict(row)
         d["explanation"] = json.loads(d["explanation_json"]) if d["explanation_json"] else None
         d["alerts"] = json.loads(d["alerts_json"]) if d["alerts_json"] else []
+        d["detail"] = json.loads(d["detail_json"]) if d.get("detail_json") else None
         results.append(d)
     return results
 

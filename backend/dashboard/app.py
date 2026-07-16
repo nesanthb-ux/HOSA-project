@@ -166,6 +166,32 @@ st.markdown(
 
     [data-testid="stForm"] { border: 1px solid #1F2430; border-radius: 10px; background: #0E1118; }
     button[kind="secondary"], button[kind="primary"] { min-height: 48px; }
+
+    /* Explainability drill-down (Doc 16 §43) */
+    .detail-section-label {
+        color: #8B92A0; font-size: 0.78rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.06em; margin: 18px 0 8px 0;
+    }
+    .detail-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .detail-bar-label { width: 150px; flex-shrink: 0; color: #C4C9D2; font-size: 0.88rem; }
+    .detail-bar-track { flex-grow: 1; height: 8px; border-radius: 999px; background: #16181E; overflow: hidden; }
+    .detail-bar-fill { height: 100%; border-radius: 999px; }
+    .detail-bar-value { width: 48px; text-align: right; font-family: var(--font-mono); color: #F4F5F7; font-size: 0.85rem; }
+    .rule-row {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 8px 0; border-bottom: 1px solid #16181E; font-size: 0.9rem;
+    }
+    .rule-name { color: #F4F5F7; font-weight: 500; }
+    .rule-meta { color: #6B7280; font-family: var(--font-mono); font-size: 0.82rem; }
+    .compare-row {
+        display: flex; justify-content: space-between; padding: 7px 0;
+        border-bottom: 1px solid #16181E; font-size: 0.9rem;
+    }
+    .compare-label { color: #8B92A0; }
+    .compare-value { font-family: var(--font-mono); color: #F4F5F7; }
+    .timeline-item { display: flex; gap: 10px; padding: 5px 0; font-size: 0.85rem; }
+    .timeline-time { color: #4C5566; font-family: var(--font-mono); flex-shrink: 0; }
+    .timeline-desc { color: #C4C9D2; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -250,6 +276,118 @@ st.markdown(
 
 placeholder = st.empty()
 
+# Readable labels for the flat current_readings/baseline_profile keys
+# (Doc 16 §33 Baseline Comparison: Baseline | Current | Difference per variable).
+_COMPARISON_ROWS = [
+    ("Heart Rate", "heart_rate", "heart_rate_baseline", "heart_rate_deviation", "bpm"),
+    ("HRV (proxy)", "hrv", "hrv_baseline", "hrv_deviation", ""),
+    ("SpO2", "spo2", "spo2_baseline", None, "%"),
+    ("Temperature", "temperature", "temperature_baseline", "temperature_deviation", "°C"),
+    ("Motion", "motion_intensity", "activity_baseline", "motion_deviation", ""),
+]
+
+
+@st.dialog("Explainability")
+def _show_detail_dialog(bed_label: str, patient_name: str, snap: dict):
+    """Doc 16 §43 explainability drill-down: touching an explanation
+    reveals evidence, subsystem breakdown, triggered clinical rules with
+    their weight/confidence, baseline comparison, and timeline — the full
+    pipeline detail behind the compact primary/secondary reason text shown
+    on the bed panel itself."""
+    detail = snap.get("detail") or {}
+    explanation = snap.get("explanation") or {}
+    state = snap["state"]
+    color = STATE_COLORS.get(state, "#4C5566")
+
+    st.markdown(
+        f'<div style="color:#8B92A0;font-size:0.85rem;">{bed_label} · {patient_name}</div>'
+        f'<div style="font-size:1.6rem;font-weight:700;color:#F4F5F7;margin-top:2px;">'
+        f'{snap["priority"]:.0f} <span style="font-size:1rem;color:#4C5566;">/ 100 · {STATE_LABEL.get(state, state)}</span></div>',
+        unsafe_allow_html=True,
+    )
+    if explanation.get("priority_summary"):
+        st.markdown(f'<div style="color:#C4C9D2;margin-top:6px;">{explanation["priority_summary"]}</div>', unsafe_allow_html=True)
+
+    # ---- Evidence ranking ----
+    evidence = explanation.get("evidence") or []
+    if evidence:
+        st.markdown('<div class="detail-section-label">Evidence ranking</div>', unsafe_allow_html=True)
+        for e in evidence:
+            pct = max(0, min(100, e["influence"] * 100))
+            st.markdown(
+                f'<div class="detail-bar-row"><div class="detail-bar-label">{e["label"]}</div>'
+                f'<div class="detail-bar-track"><div class="detail-bar-fill" '
+                f'style="width:{pct}%;background:#22D3B8;"></div></div>'
+                f'<div class="detail-bar-value">{pct:.0f}%</div></div>',
+                unsafe_allow_html=True,
+            )
+
+    # ---- Subsystem risk ----
+    subsystem_results = detail.get("subsystem_results") or []
+    if subsystem_results:
+        st.markdown('<div class="detail-section-label">Subsystem risk</div>', unsafe_allow_html=True)
+        for s in subsystem_results:
+            pct = max(0, min(100, s["risk_score"]))
+            st.markdown(
+                f'<div class="detail-bar-row"><div class="detail-bar-label">{s["subsystem"].title()}</div>'
+                f'<div class="detail-bar-track"><div class="detail-bar-fill" '
+                f'style="width:{pct}%;background:{color};"></div></div>'
+                f'<div class="detail-bar-value">{pct:.0f}</div></div>',
+                unsafe_allow_html=True,
+            )
+
+    # ---- Triggered clinical rules ----
+    rules = detail.get("triggered_rules") or []
+    if rules:
+        st.markdown('<div class="detail-section-label">Triggered clinical rules</div>', unsafe_allow_html=True)
+        for r in rules:
+            duration_min = r["duration_seconds"] / 60
+            duration_text = f"{duration_min:.1f} min" if duration_min >= 1 else f"{r['duration_seconds']:.0f}s"
+            st.markdown(
+                f'<div class="rule-row"><span class="rule-name">{r["rule_name"]}</span>'
+                f'<span class="rule-meta">sev {r["severity"]:.2f} · conf {r["confidence"]*100:.0f}% · {duration_text}</span></div>',
+                unsafe_allow_html=True,
+            )
+    else:
+        st.markdown('<div class="detail-section-label">Triggered clinical rules</div>', unsafe_allow_html=True)
+        st.markdown('<div style="color:#4C5566;font-size:0.88rem;">None currently triggered</div>', unsafe_allow_html=True)
+
+    # ---- Baseline comparison ----
+    current = detail.get("current_readings") or {}
+    baseline_profile = detail.get("baseline_profile") or {}
+    baseline_deviation = detail.get("baseline_deviation") or {}
+    if current and baseline_profile:
+        st.markdown('<div class="detail-section-label">Baseline comparison</div>', unsafe_allow_html=True)
+        for label, cur_key, base_key, dev_key, unit in _COMPARISON_ROWS:
+            if cur_key not in current or baseline_profile.get(base_key) is None:
+                continue
+            cur_val = current[cur_key]
+            base_val = baseline_profile[base_key]
+            dev_val = baseline_deviation.get(dev_key) if dev_key else None
+            dev_text = f" ({dev_val:.1f}σ)" if dev_val is not None else ""
+            st.markdown(
+                f'<div class="compare-row"><span class="compare-label">{label}</span>'
+                f'<span class="compare-value">{cur_val:.1f}{unit} vs {base_val:.1f}{unit} baseline{dev_text}</span></div>',
+                unsafe_allow_html=True,
+            )
+        if not baseline_profile.get("learning_complete"):
+            st.caption("Personal baseline still learning — reference range not yet fully established.")
+
+    # ---- Timeline ----
+    timeline = explanation.get("timeline") or []
+    if timeline:
+        st.markdown('<div class="detail-section-label">Timeline</div>', unsafe_allow_html=True)
+        for t in timeline[-8:]:
+            ts_text = t["timestamp"][11:19] if isinstance(t["timestamp"], str) else str(t["timestamp"])
+            st.markdown(
+                f'<div class="timeline-item"><span class="timeline-time">{ts_text}</span>'
+                f'<span class="timeline-desc">{t["description"]}</span></div>',
+                unsafe_allow_html=True,
+            )
+
+    if st.button("Close", use_container_width=True):
+        st.rerun()
+
 
 def _bed_panel(bed_label: str, patient_id: str | None, snapshots_by_id: dict):
     """Everything in here runs inside one `with st.container(border=True):`
@@ -333,6 +471,9 @@ def _bed_panel(bed_label: str, patient_id: str | None, snapshots_by_id: dict):
 
     for alert in snap.get("alerts", []):
         st.warning(alert, icon="⚠️")
+
+    if st.button("Why this score? →", key=f"detail_btn_{patient_id}", use_container_width=True):
+        _show_detail_dialog(bed_label, patient.get("name", patient_id), snap)
 
 
 def render():

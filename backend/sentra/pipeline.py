@@ -103,6 +103,16 @@ class SentraPipeline:
         sensor_status = self._sensor_status_for(patient_id)
         alerts = [priority.recommended_action] if priority.alert_required else []
 
+        current_readings = {
+            k: v for k, v in {
+                "heart_rate": features.cardiac.heart_rate,
+                "hrv": features.cardiac.heart_rate_variability,
+                "spo2": features.respiratory.spo2,
+                "temperature": features.temperature.skin_temperature,
+                "motion_intensity": features.motion.motion_intensity,
+            }.items() if v is not None
+        }
+
         return DashboardObject(
             patient_id=patient_id,
             patient_state=priority.state,
@@ -112,6 +122,11 @@ class SentraPipeline:
             explanation=explanation,
             sensor_status=sensor_status,
             alerts=alerts,
+            subsystem_results=subsystem_results,
+            triggered_rules=[r for r in rules if r.triggered],
+            baseline_deviation=deviation,
+            baseline_profile=profile,
+            current_readings=current_readings,
         )
 
     def _sensor_status_for(self, patient_id: str) -> list[SensorStatus]:
