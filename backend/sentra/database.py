@@ -71,6 +71,15 @@ def get_patient(patient_id: str) -> dict | None:
     return dict(row) if row else None
 
 
+def list_patients() -> list[dict]:
+    """Every known patient (calibrated or already reporting data), for bed
+    -assignment pickers — a bed can be assigned before its patient's first
+    packet arrives, so this can't just come from dashboard_snapshots."""
+    conn = get_connection()
+    rows = conn.execute("SELECT * FROM patients ORDER BY patient_id").fetchall()
+    return [dict(r) for r in rows]
+
+
 def record_snapshot(dashboard_object: DashboardObject) -> None:
     conn = get_connection()
     conn.execute(

@@ -51,7 +51,7 @@ SENTRA_SOFTWARE/
     config/
       weights.yaml         every tunable weight/threshold (CLAUDE.md: no hardcoded thresholds)
     dashboard/
-      app.py               interim Streamlit UI (Doc 16's full embedded UI is not built yet)
+      app.py               2-bed bedside Hub display (one physical touchscreen per bed pair)
   firmware/
     patient_node/          ESP32 firmware: MAX30102, MAX30205, MPU6050, BLE
   hardware/               BOM / wiring notes
@@ -79,9 +79,24 @@ pip install -r requirements.txt
 # Terminal 1: simulated patient nodes (stand-in for real BLE hardware)
 python -m sentra.run_simulation
 
-# Terminal 2: dashboard
+# Terminal 2: a Hub's bedside display
 streamlit run dashboard/app.py
 ```
+
+The dashboard is a **bedside Hub display, not a ward-wide dashboard**: it
+shows exactly two patients — Bed A and Bed B — matching the real deployment
+(a small touchscreen physically mounted between two beds, wired to that
+pair's Patient Nodes; a ward runs many of these). Which two patients a
+given Hub shows is set via URL query params, so every physical unit can
+run the same `app.py` deep-linked to its own bed pair:
+
+```
+http://<hub-ip>:8501/?hub=HUB-03&bed_a=P-A&bed_b=P-B
+```
+
+Open the sidebar (collapsed by default — it's a setup panel, not for
+routine nursing use) to calibrate patients and assign a Hub's bed pair
+without editing the URL by hand.
 
 ---
 
@@ -112,9 +127,11 @@ describe production/ML/UI phases this pass does not attempt):
 - **Doc 16 (Embedded Touchscreen UI)** — the full multi-role (nurse/
   physician/admin/biomedical-tech) React-style embedded interface with
   Alert Center, Device Management, and Administration is not built. The
-  Streamlit dashboard in `backend/dashboard/` covers the Doc 16 §7-13 home
-  dashboard concepts (priority queue, patient cards, confidence, live
-  refresh) as an interim substitute.
+  Streamlit app in `backend/dashboard/` covers Doc 16 §3's core design
+  goal (know within 3s who needs attention, 5s why, 10s what to do) as a
+  two-patient bedside Hub display rather than a ward-wide overview screen
+  — see the README "Running It" section above for why that's the actual
+  physical deployment shape, not a scope-cutting shortcut.
 
 ---
 
