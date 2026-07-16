@@ -102,13 +102,25 @@ st.markdown(
     }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
 
-    /* Bed panel */
-    .bed-panel {
-        border: 1px solid #1A1C22; border-radius: 16px; background: #060708;
-        padding: 22px 26px; min-height: 480px;
+    /* Bed panel — a real Streamlit container (st.container(border=True)),
+    not a hand-spanned <div>: Streamlit renders each st.markdown() call as
+    its own isolated HTML fragment, so a <div> opened in one call and
+    closed in a later one gets auto-closed empty by the browser the moment
+    it's parsed, leaving every following element as an orphaned sibling
+    instead of a child. Style the real container wrapper instead. */
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(div.bed-panel-marker) {
+        border: 1px solid #1A1C22 !important; border-radius: 16px; background: #060708;
     }
-    .bed-panel.critical { border-color: #8E0000; box-shadow: 0 0 0 1px #8E0000, 0 0 24px rgba(142,0,0,0.35); }
-    .bed-panel.high { border-color: #E74C3C; box-shadow: 0 0 0 1px #E74C3C, 0 0 18px rgba(231,76,60,0.2); }
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(div.bed-panel-marker) > div {
+        padding: 20px 24px;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(div.bed-panel-marker.critical) {
+        border-color: #8E0000 !important; box-shadow: 0 0 0 1px #8E0000, 0 0 24px rgba(142,0,0,0.35);
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(div.bed-panel-marker.high) {
+        border-color: #E74C3C !important; box-shadow: 0 0 0 1px #E74C3C, 0 0 18px rgba(231,76,60,0.2);
+    }
+    .bed-panel-marker { display: none; }
 
     .bed-label {
         color: #5A6272; font-size: 0.8rem; font-weight: 700; text-transform: uppercase;
@@ -144,9 +156,12 @@ st.markdown(
     .footer-metric-value { font-family: var(--font-mono); color: #C4C9D2; font-size: 1.05rem; font-weight: 600; }
     .conn-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 5px; }
 
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(div.bed-panel-marker.empty) {
+        border: 1px dashed #1A1C22 !important; background: transparent;
+    }
     .empty-bed {
-        display: flex; align-items: center; justify-content: center; min-height: 480px;
-        color: #3A3F4A; font-size: 1rem; border: 1px dashed #1A1C22; border-radius: 16px;
+        display: flex; align-items: center; justify-content: center; min-height: 420px;
+        color: #3A3F4A; font-size: 1rem; text-align: center;
     }
 
     [data-testid="stForm"] { border: 1px solid #1F2430; border-radius: 10px; background: #0E1118; }
@@ -237,17 +252,23 @@ placeholder = st.empty()
 
 
 def _bed_panel(bed_label: str, patient_id: str | None, snapshots_by_id: dict):
+    """Everything in here runs inside one `with st.container(border=True):`
+    block from render() — that's what makes it one real nested DOM element
+    instead of the hand-spanned-<div> bug this replaced (see the CSS
+    comment above `.bed-panel-marker`)."""
     if patient_id is None:
-        st.markdown(f'<div class="empty-bed">{bed_label} — no patient assigned</div>', unsafe_allow_html=True)
+        st.markdown('<div class="bed-panel-marker empty"></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="empty-bed">{bed_label}<br/>No patient assigned</div>', unsafe_allow_html=True)
         return
 
     patient = database.get_patient(patient_id) or {}
     snap = snapshots_by_id.get(patient_id)
 
     if snap is None:
+        st.markdown('<div class="bed-panel-marker empty"></div>', unsafe_allow_html=True)
         st.markdown(
             f'<div class="empty-bed">{bed_label} · {patient.get("name", patient_id)}<br/>'
-            f'<span style="font-size:0.85rem;">waiting for first reading…</span></div>',
+            f'<span style="font-size:0.85rem;">Waiting for first reading…</span></div>',
             unsafe_allow_html=True,
         )
         return
@@ -266,7 +287,7 @@ def _bed_panel(bed_label: str, patient_id: str | None, snapshots_by_id: dict):
     connected = seconds_since_update < 45
     conn_color = "#2ECC71" if connected else "#E74C3C"
 
-    st.markdown(f'<div class="bed-panel {panel_class}">', unsafe_allow_html=True)
+    st.markdown(f'<div class="bed-panel-marker {panel_class}"></div>', unsafe_allow_html=True)
     st.markdown(
         f'<div class="bed-label">{bed_label}</div>'
         f'<span class="badge-xl" style="background:{color};color:{text_color};">{label}</span>'
@@ -309,7 +330,6 @@ def _bed_panel(bed_label: str, patient_id: str | None, snapshots_by_id: dict):
         f'</div>',
         unsafe_allow_html=True,
     )
-    st.markdown("</div>", unsafe_allow_html=True)
 
     for alert in snap.get("alerts", []):
         st.warning(alert, icon="⚠️")
@@ -325,9 +345,9 @@ def render():
             return
 
         col_a, col_b = st.columns(2, gap="large")
-        with col_a:
+        with col_a, st.container(border=True):
             _bed_panel("BED A", bed_a_id, snapshots_by_id)
-        with col_b:
+        with col_b, st.container(border=True):
             _bed_panel("BED B", bed_b_id, snapshots_by_id)
 
 
