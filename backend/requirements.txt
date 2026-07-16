@@ -1,0 +1,6 @@
+pydantic>=2.0
+PyYAML
+numpy
+streamlit
+pandas
+pytest

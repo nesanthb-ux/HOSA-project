@@ -1,0 +1,160 @@
+# SENTRA weights & thresholds — single source of truth for every tunable
+# number used across backend/sentra/. Per CLAUDE.md ("Database Rules" /
+# "Configuration Management" in docs/15): no source code shall hardcode
+# these values. Every value here is cited to the doc section that defines
+# it; values marked [HARDWARE_SCOPE] were reweighted because the ordered
+# hardware has no ECG sensor — see docs/HARDWARE_SCOPE.md.
+
+window:
+  size_seconds: 30          # Doc 03 §8
+  overlap_fraction: 0.50    # Doc 03 §8
+
+signal_quality:
+  # Doc 05 §8 (PPG), §9 (IMU), §10 (Temperature)
+  ppg:
+    pulse_shape: 0.25
+    motion: 0.20
+    perfusion: 0.20
+    pulse_detection: 0.15
+    ambient_light: 0.10
+    amplitude_stability: 0.10
+  imu:
+    packet_quality: 0.30
+    calibration: 0.25
+    saturation: 0.20
+    noise: 0.15
+    orientation_stability: 0.10
+  temperature:
+    contact: 0.35
+    stability: 0.30
+    drift: 0.20
+    continuity: 0.15
+  # Doc 05 §11 defined ECG .40 / PPG .30 / IMU .20 / Temp .10.
+  # [HARDWARE_SCOPE] no ECG term; PPG absorbs most of its weight since it
+  # now carries both cardiac and respiratory signal.
+  overall:
+    ppg: 0.55
+    imu: 0.25
+    temperature: 0.20
+  quality_categories:        # Doc 05 §12
+    excellent: 0.90
+    good: 0.75
+    acceptable: 0.60
+    poor: 0.40
+  ignore_below: 0.40
+  extract_limited_below: 0.60
+
+preprocessing:
+  # Doc 04 §7 missing-data tiers
+  gap_linear_interp_ms: 250
+  gap_spline_interp_ms: 2000
+  ppg_bandpass_hz: [0.5, 8.0]     # Doc 04 §9
+  resample_hz:                     # Doc 04 §13
+    ppg: 100
+    imu: 50
+    temperature: 1
+
+baseline_engine:
+  # Doc 07 §7, §10, §12
+  learning_duration_minutes: 30
+  ema_alpha: 0.05
+  stable_window_min_sqi: 0.80
+  feature_importance:              # Doc 07 §12
+    heart_rate: 0.20
+    hrv: 0.20
+    respiratory_rate: 0.15
+    spo2: 0.20
+    temperature: 0.10
+    activity: 0.10
+    derived: 0.05
+  freeze_on_rule_severity_above: 0.50   # "Moderate" per Doc 08 §9
+  freeze_on_state_above: WATCH           # Doc 07 §16
+
+clinical_rules:
+  # Doc 08 §12-15. CR-006/CR-007 (QTc, rhythm) omitted: ECG-only, see
+  # docs/HARDWARE_SCOPE.md.
+  cardiac:
+    cr001_tachycardia_bpm: 120
+    cr001_persistence_windows: 3
+    cr001_severity: 0.70
+    cr002_severe_tachycardia_bpm: 150
+    cr002_persistence_windows: 2
+    cr002_severity: 0.95
+    cr003_bradycardia_bpm: 50
+    cr003_persistence_windows: 3
+    cr003_severity: 0.70
+    cr004_rapid_increase_bpm: 30
+    cr004_window_minutes: 5
+    cr005_hrv_drop_fraction: 0.40
+    cr005_persistence_minutes: 10
+  respiratory:
+    rr001_tachypnea_bpm: 24
+    rr002_bradypnea_bpm: 10
+    rr003_hypoxia_spo2: 92
+    rr003_persistence_windows: 3
+    rr004_spo2_drop_pct: 4
+    rr004_window_minutes: 5
+  temperature:
+    tmp001_fever_c: 38.0
+    tmp002_rapid_rise_c_per_hour: 1.0
+    tmp003_persistence_minutes: 30
+  motion:
+    mot001_fall_probability: 0.90
+    mot002_inactivity_hours: 2
+    mot004_activity_deviation_pct: 300
+
+subsystem_scoring:
+  # Doc 09 §12 confidence formula
+  confidence:
+    signal_quality: 0.30
+    baseline: 0.25
+    model_stability: 0.20
+    feature_confidence: 0.15
+    rule_agreement: 0.10
+  risk_bands:               # Doc 09 §11
+    normal: 20
+    mild: 40
+    moderate: 60
+    high: 80
+
+confidence_fusion:
+  # Doc 10 §6-7
+  signal: 0.30
+  baseline: 0.20
+  clinical: 0.20
+  ml: 0.20
+  trend: 0.10
+  categories:                # Doc 10 §9
+    very_high: 0.90
+    high: 0.75
+    moderate: 0.60
+    low: 0.40
+
+priority:
+  # Doc 11 §10-11.
+  # [HARDWARE_SCOPE] subsystem sub-weights reweighted: cardiac .35->.30,
+  # respiratory .30->.35 (PPG is now the primary source for both, and
+  # PPG-derived HRV is a weaker cardiac signal than ECG, so respiratory
+  # gets the larger share). Temperature/mobility unchanged.
+  clinical_weight: 0.30
+  subsystem_weight: 0.25
+  trend_weight: 0.15
+  baseline_weight: 0.15
+  confidence_weight: 0.10
+  context_weight: 0.05
+  subsystem_split:
+    cardiac: 0.30
+    respiratory: 0.35
+    temperature: 0.20
+    mobility: 0.15
+  thresholds:                # Doc 11 §8
+    watch: 20
+    concern: 40
+    high_priority: 60
+    critical: 80
+  minimum_confidence: 0.60
+  persistence:                # Doc 11 §23
+    very_low_seconds: 30
+    low_seconds: 120
+    medium_minutes: 5
+    high_minutes: 15
