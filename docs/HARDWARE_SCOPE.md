@@ -89,6 +89,32 @@ already anticipates this; only its internals would change.
 
 ---
 
+# 4a. There is no ECG, and the dashboard does not pretend there is
+
+Doc 16 (User Interface) was written assuming a monitor with a real ECG
+trace. This hardware has none — see §3/§5 above. `backend/dashboard/
+waveform.py` draws a live waveform panel as the dashboard's primary visual
+(matching real hospital monitors, which pair an ECG trace with a second
+"Pleth"/PPG trace from the pulse-ox clip), but it is explicitly labeled
+**"PPG / Pulse Waveform"**, never "ECG," everywhere it appears.
+
+What it actually draws: a textbook PPG pulse morphology (systolic upstroke,
+dicrotic notch, diastolic decay), animated and timed by the real, currently
+measured heart rate from `current_readings`. The shape is a standard
+template, not a per-patient captured signal — the firmware doesn't
+transmit raw optical samples to have a real trace to play back (§4 above).
+The number driving the animation speed is genuine sensor data; the same
+technique consumer fitness devices use for an animated heartbeat display.
+This is a deliberate choice, made after asking the user directly, to avoid
+fabricating a literal ECG trace with no electrodes behind it (CLAUDE.md:
+"never fabricate medical values").
+
+Likewise, "skin impedance" (an EDA/GSR measurement, Doc 03 §4 future
+sensor, not part of this hardware) is shown as **skin temperature**
+(MAX30205, real hardware) throughout the UI, not fabricated.
+
+---
+
 # 4b. Respiratory rate and true HRV are not available
 
 Doc 06 §7 derives respiratory rate from PPG waveform modulation (RIIV/RIFV/

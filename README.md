@@ -98,6 +98,24 @@ Open the sidebar (collapsed by default — it's a setup panel, not for
 routine nursing use) to calibrate patients and assign a Hub's bed pair
 without editing the URL by hand.
 
+Each bed panel is built like a real bedside monitor: a live waveform
+occupies the primary visual space, vitals (heart rate, SpO2, skin
+temperature, sensor connection) surround it, and the AI risk score sits
+alongside as a clinical metric rather than dominating the screen. That
+waveform is labeled **"PPG / Pulse Waveform,"** not ECG — see
+`docs/HARDWARE_SCOPE.md` §4a for exactly what it does and doesn't
+represent (short version: real measured heart rate driving a standard
+pulse-shape animation, not a captured trace, since there's no ECG
+hardware and the firmware doesn't transmit raw optical samples).
+
+Tapping "View full patient detail" opens a full-screen page (not a modal)
+with the same waveform at a larger size plus the complete explainability
+picture: evidence ranking, subsystem risk, triggered clinical rules,
+baseline comparison, and a state-transition timeline (Doc 16 §43).
+
+A time zone selector next to the header clock (UTC/ET/CT/MT/PT/IST)
+controls every displayed timestamp.
+
 ---
 
 # What's Implemented vs. Deferred
