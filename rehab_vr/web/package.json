@@ -1,0 +1,9 @@
+{
+  "name": "aria-web",
+  "private": true,
+  "type": "module",
+  "description": "ARIA browser app. No build step and no dependencies; this file only marks the .js files as ES modules and gives `npm test` a target.",
+  "scripts": {
+    "test": "node --test \"tests/*.test.js\""
+  }
+}
